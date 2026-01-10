@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 55, 65, 81;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: #FAF8F3;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@keyframes pulse-once {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+}
+
+.animate-pulse-once {
+  animation: pulse-once 0.5s ease-in-out;
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-6 py-3 rounded-xl font-medium text-white bg-gradient-to-r from-lavender-300 to-lavender-400 hover:from-lavender-400 hover:to-lavender-500 transition-all duration-200 shadow-soft hover:shadow-soft-lg transform hover:-translate-y-0.5;
+  }
+  
+  .btn-secondary {
+    @apply px-6 py-3 rounded-xl font-medium text-gray-700 bg-beige-100 hover:bg-beige-200 transition-all duration-200 shadow-soft border border-beige-200;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl border border-beige-200 bg-white focus:ring-2 focus:ring-lavender-200 focus:border-lavender-300 transition-all duration-200 placeholder:text-gray-400;
+  }
+  
+  .card {
+    @apply bg-white rounded-2xl shadow-soft border border-beige-100;
+  }
+}
+
