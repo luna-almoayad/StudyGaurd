@@ -121,7 +121,7 @@ export default function Home() {
           <div className="flex flex-col items-center justify-center sm:flex-row sm:items-center sm:justify-start">
             <Image
               src="/guardIcon.png"
-              alt="StudyGuard"
+              alt="ChirpGuard"
               width={128}
               height={128}
               className="h-28 w-28 sm:h-32 sm:w-32 sm:ml-2 rounded-3xl border border-beige-100 bg-white object-contain"
@@ -129,7 +129,7 @@ export default function Home() {
             />
             <div className="text-center sm:flex-1 sm:text-center -ml-12">
               <h1 className="text-6xl font-light text-gray-800 tracking-tight mb-2">
-                Study<span className="font-semibold text-lavender-400">Guard</span>
+                Chirp<span className="font-semibold text-lavender-400">Guard</span>
               </h1>
               <p className="text-gray-500 text-xl">Create your study party</p>
             </div>
