@@ -25,6 +25,9 @@ export default function LeaderboardPage() {
   const [results, setResults] = useState<SessionResults | null>(null)
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [insight, setInsight] = useState<string | null>(null)
+  const [insightLoading, setInsightLoading] = useState(false)
+  const [insightError, setInsightError] = useState<string | null>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('sessionResults')
@@ -68,6 +71,50 @@ export default function LeaderboardPage() {
 
   saveScores()
 }, [results, saved])
+
+  useEffect(() => {
+    if (!results) return
+
+    const fetchInsight = async () => {
+      try {
+        setInsightLoading(true)
+        setInsightError(null)
+
+        const durationMinutes = Math.max(1, Math.round(results.duration / 60))
+        const totalDistractions = results.players.reduce((sum, player) => sum + player.distractions, 0)
+        const avgPoints = Math.round(
+          results.players.reduce((sum, player) => sum + player.points, 0) / results.players.length
+        )
+        const topPlayer = [...results.players].sort((a, b) => b.points - a.points)[0]
+
+        const res = await fetch('/api/session-insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionName: results.sessionData.sessionName,
+            topic: results.sessionData.topic,
+            durationMinutes,
+            totalDistractions,
+            avgPoints,
+            topPerformer: topPlayer?.name || null,
+          }),
+        })
+
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(data?.error || 'Failed to load insights')
+        }
+
+        setInsight(data?.insight || null)
+      } catch (err: any) {
+        setInsightError(err.message || 'Failed to load insights')
+      } finally {
+        setInsightLoading(false)
+      }
+    }
+
+    fetchInsight()
+  }, [results])
 
 
   const formatTime = (seconds: number) => {
@@ -162,6 +209,19 @@ export default function LeaderboardPage() {
                 </div>
               )
             })}
+          </div>
+
+          <div className="card p-6 mb-8 bg-beige-50 border border-beige-100">
+            <h2 className="text-lg font-semibold text-gray-800 mb-2">Session Insights</h2>
+            {insightLoading && (
+              <p className="text-sm text-gray-500">Generating insight...</p>
+            )}
+            {!insightLoading && insight && (
+              <p className="text-sm text-gray-600 leading-relaxed">{insight}</p>
+            )}
+            {!insightLoading && !insight && insightError && (
+              <p className="text-sm text-gray-500">{insightError}</p>
+            )}
           </div>
 
           <div className="flex gap-4">
