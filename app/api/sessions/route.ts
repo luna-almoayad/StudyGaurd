@@ -9,7 +9,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const profileId = searchParams.get("profileId");
 
-  const filter = profileId
+  const isValidId =
+    typeof profileId === "string" && mongoose.Types.ObjectId.isValid(profileId);
+  const filter = isValidId
     ? {
         $or: [
           { hostProfileId: profileId },

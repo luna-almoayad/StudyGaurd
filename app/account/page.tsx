@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface Profile {
@@ -33,31 +33,69 @@ export default function AccountPage() {
   const [profileId, setProfileId] = useState<string | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [sessions, setSessions] = useState<SessionRecord[]>([])
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const activeRequestRef = useRef<number>(0)
+
+  const isLikelyObjectId = (value: string | null) =>
+    typeof value === 'string' && /^[a-f0-9]{24}$/i.test(value)
 
   useEffect(() => {
     const stored = localStorage.getItem('currentProfileId')
-    if (!stored) return
-    setProfileId(stored)
+    if (stored && isLikelyObjectId(stored)) {
+      setProfileId(stored)
+    }
+    const loadProfiles = async () => {
+      const res = await fetch('/api/profiles')
+      if (!res.ok) return
+      const data = await res.json()
+      const normalized = Array.isArray(data.profiles)
+        ? data.profiles.map((profile: any) => ({
+            id: profile.id || profile._id,
+            name: profile.name,
+            username: profile.username,
+            avatar: profile.avatar,
+            totalScore: profile.totalScore,
+            totalSessions: profile.totalSessions,
+          }))
+        : []
+      setProfiles(normalized)
+      if ((!stored || !isLikelyObjectId(stored)) && normalized.length) {
+        setProfileId(normalized[0].id)
+        localStorage.setItem('currentProfileId', normalized[0].id)
+      }
+    }
+    loadProfiles().catch((error) => console.error('Profiles load failed', error))
   }, [])
 
   useEffect(() => {
     const load = async () => {
       if (!profileId) return
+      const requestId = Date.now()
+      activeRequestRef.current = requestId
       const [profileRes, sessionsRes] = await Promise.all([
-        fetch(`/api/profiles/${profileId}`),
-        fetch(`/api/sessions?profileId=${profileId}`),
+        fetch(`/api/profiles/${profileId}`, { cache: 'no-store' }),
+        fetch(`/api/sessions?profileId=${profileId}`, { cache: 'no-store' }),
       ])
       if (profileRes.ok) {
         const data = await profileRes.json()
-        setProfile(data.profile)
+        if (activeRequestRef.current === requestId) {
+          setProfile(data.profile)
+        }
       }
       if (sessionsRes.ok) {
         const data = await sessionsRes.json()
-        setSessions(data.sessions || [])
+        if (activeRequestRef.current === requestId) {
+          setSessions(data.sessions || [])
+        }
       }
     }
     load().catch((error) => console.error('Account load failed', error))
   }, [profileId])
+
+  const handleProfileChange = (value: string) => {
+    setProfileId(value)
+    localStorage.setItem('currentProfileId', value)
+  }
 
   const averageScore = useMemo(() => {
     if (!profile || profile.totalSessions === 0) return 100
@@ -73,7 +111,12 @@ export default function AccountPage() {
     return 1
   }, [averageScore])
 
-  const recentSessions = useMemo(() => sessions.slice(0, 8), [sessions])
+  const recentSessions = useMemo(() => {
+    if (!profileId) return []
+    return sessions
+      .filter((session) => session.results?.some((r) => r.profileId === profileId))
+      .slice(0, 8)
+  }, [sessions, profileId])
 
   const formatDate = (timestamp?: number) => {
     if (!timestamp) return 'Session completed'
@@ -86,17 +129,24 @@ export default function AccountPage() {
     return `${mins}m ${secs}s`
   }
 
-  if (!profileId) {
+  const showEmptyState = !profileId && profiles.length === 0
+
+  if (showEmptyState) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-beige-50 via-lavender-50 to-beige-100 flex items-center justify-center p-4">
         <div className="card p-10 max-w-lg w-full text-center">
-          <h1 className="text-2xl font-semibold text-gray-800 mb-3">No profile selected</h1>
+          <h1 className="text-2xl font-semibold text-gray-800 mb-3">No profiles yet</h1>
           <p className="text-gray-500 mb-6">
-            Choose a host profile on the home page to view account details.
+            Create a profile to start tracking sessions.
           </p>
-          <button onClick={() => router.push('/')} className="btn-primary w-full">
-            Back to Home
-          </button>
+          <div className="flex gap-3">
+            <button onClick={() => router.push('/profiles/new')} className="btn-primary w-full">
+              Create Profile
+            </button>
+            <button onClick={() => router.push('/')} className="btn-secondary w-full">
+              Back to Home
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -117,6 +167,24 @@ export default function AccountPage() {
               <p className="text-gray-500 text-sm">@{profile?.username}</p>
             </div>
           </div>
+          {profiles.length > 0 && (
+            <div className="min-w-[220px]">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Switch Profile
+              </label>
+              <select
+                value={profileId || ''}
+                onChange={(e) => handleProfileChange(e.target.value)}
+                className="input-field"
+              >
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.avatar ? `${p.avatar} ` : ''}{p.name} (@{p.username})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="flex items-center gap-6">
             <div>
               <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Average Score</div>
@@ -141,9 +209,14 @@ export default function AccountPage() {
         <div className="card p-8">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-800">Recent Sessions</h2>
-            <button onClick={() => router.push('/')} className="btn-secondary">
-              Start a Session
-            </button>
+            <div className="flex gap-3">
+              <button onClick={() => router.push('/leaderboard/history')} className="btn-secondary">
+                Session Leaderboards
+              </button>
+              <button onClick={() => router.push('/')} className="btn-secondary">
+                Start a Session
+              </button>
+            </div>
           </div>
           {recentSessions.length === 0 ? (
             <div className="text-gray-500">No sessions recorded yet.</div>
@@ -151,6 +224,10 @@ export default function AccountPage() {
             <div className="space-y-3">
               {recentSessions.map((session) => {
                 const match = session.results.find((r) => r.profileId === profileId)
+                const scoreDisplay =
+                  match && match.distractions === 0
+                    ? 100
+                    : match?.points ?? 0
                 return (
                   <div
                     key={session._id}
@@ -167,11 +244,16 @@ export default function AccountPage() {
                     </div>
                     <div className="text-right">
                       <div className="text-xl font-light text-lavender-400">
-                        {match?.points ?? 0} pts
+                        {match ? `${scoreDisplay} pts` : 'Not linked'}
                       </div>
                       <div className="text-xs text-gray-400">
-                        {match?.distractions ?? 0} distractions • {formatTime(session.duration)}
+                        {match
+                          ? `${match.distractions ?? 0} distractions`
+                          : 'No profile match'} • {formatTime(session.duration)}
                       </div>
+                      {match && match.distractions === 0 && (
+                        <div className="text-[11px] text-sage-200">0 deductions</div>
+                      )}
                     </div>
                   </div>
                 )
