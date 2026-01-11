@@ -67,12 +67,35 @@ body {
   animation: walkAcross 40s linear infinite;
 }
 
+
 .walker-sprite {
   width: 470px;
   height: auto;
   display: block;
 }
+.walker-idle-zoom{
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  animation: idle-to-center 2s ease-out forwards;
+}
 
+.walker-idle {
+  position: absolute;
+  left: 50px;
+  width: 64px;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+@keyframes idle-to-center {
+  0% {
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  100% {
+    transform: translateX(-50%) translateY(40vh) scale(2.3);
+  }
+}
 
 @keyframes walkAcross { 
   0% { transform: translateX(0) scaleX(1); } 

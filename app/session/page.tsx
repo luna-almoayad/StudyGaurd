@@ -24,7 +24,7 @@ interface SessionData {
 
 export default function SessionPage() {
   const router = useRouter()
-  const [isDistracted, setIsDistracted] = useState(true)
+  const [isDistracted, setIsDistracted] = useState<'idle' | 'walk' | 'zoom' | 'UNKNOWN'>('UNKNOWN')
   const [sessionData, setSessionData] = useState<SessionData | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [isRecording, setIsRecording] = useState(false)
@@ -128,7 +128,7 @@ export default function SessionPage() {
 
   const startRecording = async (options?: { useShortChunk?: boolean }) => {
     try {
-      setIsDistracted(false)
+      setIsDistracted('walk')
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm',
@@ -200,7 +200,7 @@ export default function SessionPage() {
       clearTimeout(initialChunkTimeoutRef.current)
     }
     setIsRecording(false)
-    setIsDistracted(true)
+    setIsDistracted('idle')
     setTopicStatus('UNKNOWN')
   }
 
@@ -271,7 +271,7 @@ export default function SessionPage() {
   }
 
   const handleDistraction = (transcript: string) => {
-    setIsDistracted(true)
+    setIsDistracted('zoom')
     setLastTranscript(transcript)
     setIsPaused(true)
     setShowDistractionModal(true)
@@ -324,7 +324,7 @@ export default function SessionPage() {
 
   const handleStartBreak = () => {
     setIsOnBreak(true)
-    setIsDistracted(true)
+    setIsDistracted('idle')
     setIsPaused(true)
     setBreakStartTime(Date.now())
     stopRecording()
@@ -332,7 +332,7 @@ export default function SessionPage() {
 
   const handleEndBreak = () => {
     setIsOnBreak(false)
-    setIsDistracted(false)
+    setIsDistracted('walk')
     setIsPaused(false)
     setBreakStartTime(null)
     setShowBreakModal(false)
@@ -480,7 +480,7 @@ export default function SessionPage() {
                   <button
                     onClick={() => {
                       setIsPaused(false)
-                      setIsDistracted(false)
+                      setIsDistracted('walk')
                       startRecording()
                     }}
                     className="flex-1 btn-primary"
@@ -606,24 +606,32 @@ export default function SessionPage() {
         <BreakModal onEndBreak={handleEndBreak} />
       )}
 
-        {isDistracted ? (
+       {isDistracted === "walk" && (
+          <div className="walker-track">
+            <img src="/plant.gif" className="walker-sprite" />
+          </div>
+        )}
+
+        {isDistracted === "zoom" && (
+          <div className="walker-idle-center">
+            <img src="/plant_idle.png" className="walker-idle-sprite" />
+          </div>
+        )}
+
+        {isDistracted === "idle" && (
           <img
             src="/plant_idle.png"
             alt="idle"
             style={{
               position: "absolute",
               top: "35px",
-              left: "120px",
+              left: "190px",
               width: "50px",
               height: "auto",
               zIndex: 99999,
             }}
             />
-            ) : (
-              <div className="walker-track">
-                <img src="/plant.gif" className="walker-sprite" />
-              </div>
-            )}
+        )}
     </div>
   )
 }
