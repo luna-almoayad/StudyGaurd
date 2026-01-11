@@ -23,6 +23,7 @@ interface SessionData {
 
 export default function SessionPage() {
   const router = useRouter()
+  const [isDistracted, setIsDistracted] = useState(true)
   const [sessionData, setSessionData] = useState<SessionData | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
   const [isRecording, setIsRecording] = useState(false)
@@ -124,6 +125,7 @@ export default function SessionPage() {
 
   const startRecording = async (options?: { useShortChunk?: boolean }) => {
     try {
+      setIsDistracted(false)
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm',
@@ -195,6 +197,7 @@ export default function SessionPage() {
       clearTimeout(initialChunkTimeoutRef.current)
     }
     setIsRecording(false)
+    setIsDistracted(true)
     setTopicStatus('UNKNOWN')
   }
 
@@ -265,6 +268,7 @@ export default function SessionPage() {
   }
 
   const handleDistraction = (transcript: string) => {
+    setIsDistracted(true)
     setLastTranscript(transcript)
     setIsPaused(true)
     setShowDistractionModal(true)
@@ -289,11 +293,13 @@ export default function SessionPage() {
     
     setShowDistractionModal(false)
     setIsPaused(false)
+    setIsDistracted(false)
     startRecording({ useShortChunk: true })
   }
 
   const handleStartBreak = () => {
     setIsOnBreak(true)
+    setIsDistracted(true)
     setIsPaused(true)
     setBreakStartTime(Date.now())
     stopRecording()
@@ -301,6 +307,7 @@ export default function SessionPage() {
 
   const handleEndBreak = () => {
     setIsOnBreak(false)
+    setIsDistracted(false)
     setIsPaused(false)
     setBreakStartTime(null)
     setShowBreakModal(false)
@@ -565,6 +572,27 @@ export default function SessionPage() {
       {showBreakModal && (
         <BreakModal onEndBreak={handleEndBreak} />
       )}
+
+        {isDistracted ? (
+          <img
+            src="/plant_idle.png"
+            alt="idle"
+            style={{
+              position: "absolute",
+              top: "35px",
+              left: "120px",
+              width: "50px",
+              height: "auto",
+              zIndex: 99999,
+            }}
+            />
+            ) : (
+              <div className="walker-track">
+                <img src="/plant.gif" className="walker-sprite" />
+              </div>
+            )}
     </div>
   )
 }
+
+

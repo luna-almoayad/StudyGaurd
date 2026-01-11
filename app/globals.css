@@ -51,3 +51,33 @@ body {
   }
 }
 
+
+.mascot-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 20;
+}
+
+.walker-track {
+  position: absolute;
+  top: -90px;
+  left: -80px;
+  animation: walkAcross 30s linear infinite;
+}
+
+.walker-sprite {
+  width: 470px;
+  height: auto;
+  display: block;
+}
+
+
+@keyframes walkAcross { 
+  0% { transform: translateX(0) scaleX(1); } 
+  49% { transform: translateX(calc(100vw - 330px)) scaleX(1); } /* go past right edge */
+   50% { transform: translateX(calc(100vw - 330px)) scaleX(-1); } /* flip */
+    99% { transform: translateX(0) scaleX(-1); } /* return left */ 
+    100% { transform: translateX(0) scaleX(1); }
+   }
