@@ -35,6 +35,7 @@ Create a `.env.local` file in the root directory:
 ```env
 ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 GEMINI_API_KEY=your_gemini_api_key_here
+ELEVENLABS_VOICE_ID=your_elevenlabs_voice_id_here
 ```
 
 ### 3. Run Development Server

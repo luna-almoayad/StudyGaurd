@@ -33,6 +33,11 @@ export default function SessionPage() {
   const [showDistractionModal, setShowDistractionModal] = useState(false)
   const [showBreakModal, setShowBreakModal] = useState(false)
   const [lastTranscript, setLastTranscript] = useState('')
+  const [topicStatus, setTopicStatus] = useState<'ON_TOPIC' | 'OFF_TOPIC' | 'NO_SPEECH' | 'UNKNOWN'>('UNKNOWN')
+  const [recentTranscripts, setRecentTranscripts] = useState<
+    { text: string; time: string }[]
+  >([])
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null)
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -58,13 +63,6 @@ export default function SessionPage() {
     }))
     setPlayers(initialPlayers)
 
-    // Start timer
-    timerIntervalRef.current = setInterval(() => {
-      if (!isPaused && !isOnBreak) {
-        setElapsedTime(prev => prev + 1)
-      }
-    }, 1000)
-
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
@@ -74,7 +72,28 @@ export default function SessionPage() {
       }
       stopRecording()
     }
-  }, [router, isPaused, isOnBreak])
+  }, [router])
+
+  useEffect(() => {
+    if (!isRecording || isPaused || isOnBreak) {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+        timerIntervalRef.current = null
+      }
+      return
+    }
+
+    timerIntervalRef.current = setInterval(() => {
+      setElapsedTime(prev => prev + 1)
+    }, 1000)
+
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current)
+        timerIntervalRef.current = null
+      }
+    }
+  }, [isRecording, isPaused, isOnBreak])
 
   useEffect(() => {
     // Break timer - updates every second when on break
@@ -104,6 +123,7 @@ export default function SessionPage() {
       
       mediaRecorderRef.current = mediaRecorder
       audioChunksRef.current = []
+      setTopicStatus('UNKNOWN')
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -117,7 +137,7 @@ export default function SessionPage() {
         audioChunksRef.current = []
       }
 
-      // Record in chunks every 15 seconds
+      // Record in chunks every 30 seconds
       mediaRecorder.start()
       setIsRecording(true)
 
@@ -126,7 +146,7 @@ export default function SessionPage() {
           mediaRecorder.stop()
           mediaRecorder.start()
         }
-      }, 15000) // 15 seconds
+      }, 30000) // 30 seconds
     } catch (error) {
       console.error('Error starting recording:', error)
       alert('Could not access microphone. Please grant permissions.')
@@ -142,18 +162,20 @@ export default function SessionPage() {
       clearInterval(analysisIntervalRef.current)
     }
     setIsRecording(false)
+    setTopicStatus('UNKNOWN')
+  }
+
+  const handleStopListening = () => {
+    stopRecording()
+    setIsPaused(false)
   }
 
   const analyzeAudio = async (audioBlob: Blob) => {
     if (isPaused || isOnBreak || !sessionData) return
 
     try {
-      // Convert blob to base64
-      const arrayBuffer = await audioBlob.arrayBuffer()
-      const uint8Array = new Uint8Array(arrayBuffer)
-      const base64Audio = btoa(
-        String.fromCharCode.apply(null, Array.from(uint8Array))
-      )
+      // Convert blob to base64 without blowing the call stack
+      const base64Audio = await blobToBase64(audioBlob)
 
       // Call API to transcribe and analyze
       const response = await fetch('/api/analyze', {
@@ -168,16 +190,45 @@ export default function SessionPage() {
       })
 
       const result = await response.json()
-      
-      if (result.isDistraction) {
-        handleDistraction(result.transcript)
+      const transcriptText = result?.transcript?.trim() || ''
+
+      if (transcriptText) {
+        setRecentTranscripts(prev =>
+          [{ text: transcriptText, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 50)
+        )
+      }
+
+      if (!transcriptText) {
+        setTopicStatus('NO_SPEECH')
+      } else if (result.isDistraction) {
+        setTopicStatus('OFF_TOPIC')
+        handleDistraction(transcriptText)
       } else {
+        setTopicStatus('ON_TOPIC')
         // Positive reinforcement - slight focus increase
         setFocusLevel(prev => Math.min(100, prev + 2))
       }
     } catch (error) {
       console.error('Error analyzing audio:', error)
+      setTopicStatus('UNKNOWN')
     }
+  }
+
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onerror = () => reject(new Error('Failed to read audio blob'))
+      reader.onloadend = () => {
+        const result = reader.result
+        if (typeof result !== 'string') {
+          reject(new Error('Unexpected FileReader result'))
+          return
+        }
+        const base64 = result.split(',')[1] || ''
+        resolve(base64)
+      }
+      reader.readAsDataURL(blob)
+    })
   }
 
   const handleDistraction = (transcript: string) => {
@@ -186,6 +237,9 @@ export default function SessionPage() {
     setShowDistractionModal(true)
     setFocusLevel(prev => Math.max(0, prev - 15))
     stopRecording()
+    if (sessionData?.topic) {
+      speak(`Quick reset. Let's get back to the topic: ${sessionData.topic}`)
+    }
   }
 
   const handleAttribution = (playerName: string | null) => {
@@ -234,6 +288,32 @@ export default function SessionPage() {
     router.push('/leaderboard')
   }
 
+  const speak = async (text: string) => {
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+
+      if (!response.ok) {
+        console.error('TTS failed:', await response.text())
+        return
+      }
+
+      const audioBlob = await response.blob()
+      const url = URL.createObjectURL(audioBlob)
+      const audio = new Audio(url)
+      activeAudioRef.current?.pause()
+      activeAudioRef.current = audio
+      audio.play().finally(() => {
+        setTimeout(() => URL.revokeObjectURL(url), 5000)
+      })
+    } catch (error) {
+      console.error('Error playing TTS:', error)
+    }
+  }
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -267,7 +347,28 @@ export default function SessionPage() {
           {/* Focus Meter */}
           <div className="lg:col-span-2">
             <div className="card p-8">
-              <h2 className="text-xl font-semibold mb-6 text-gray-800">Focus Meter</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                <h2 className="text-xl font-semibold text-gray-800">Focus Meter</h2>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${
+                    topicStatus === 'ON_TOPIC'
+                      ? 'bg-focus-green text-white'
+                      : topicStatus === 'OFF_TOPIC'
+                      ? 'bg-focus-red text-white'
+                      : topicStatus === 'NO_SPEECH'
+                      ? 'bg-beige-200 text-gray-700'
+                      : 'bg-lavender-100 text-lavender-700'
+                  }`}
+                >
+                  {topicStatus === 'ON_TOPIC'
+                    ? 'On topic'
+                    : topicStatus === 'OFF_TOPIC'
+                    ? 'Off topic'
+                    : topicStatus === 'NO_SPEECH'
+                    ? 'No speech'
+                    : 'Analyzing'}
+                </span>
+              </div>
               <FocusMeter level={focusLevel} />
               
               <div className="mt-8 flex gap-3">
@@ -281,10 +382,18 @@ export default function SessionPage() {
                 )}
                 
                 {isRecording && (
-                  <div className="flex-1 bg-sage-200 text-gray-700 py-3.5 rounded-xl font-medium text-center flex items-center justify-center gap-2.5 shadow-soft">
-                    <span className="w-2.5 h-2.5 bg-gray-600 rounded-full animate-pulse"></span>
-                    Recording...
-                  </div>
+                  <>
+                    <div className="flex-1 bg-sage-200 text-gray-700 py-3.5 rounded-xl font-medium text-center flex items-center justify-center gap-2.5 shadow-soft">
+                      <span className="w-2.5 h-2.5 bg-gray-600 rounded-full animate-pulse"></span>
+                      Recording...
+                    </div>
+                    <button
+                      onClick={handleStopListening}
+                      className="px-4 py-3 bg-beige-100 text-gray-700 rounded-xl font-medium hover:bg-beige-200 transition-all duration-200 border border-beige-200 shadow-soft"
+                    >
+                      Stop Listening
+                    </button>
+                  </>
                 )}
 
                 {isPaused && !isOnBreak && (
@@ -298,6 +407,22 @@ export default function SessionPage() {
                     On Break ({formatTime(breakDuration)})
                   </div>
                 )}
+              </div>
+
+              <div className="mt-6">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">Transcript Log</h3>
+                <div className="bg-beige-50 border border-beige-100 rounded-xl p-4 h-40 overflow-y-auto text-sm text-gray-700">
+                  {recentTranscripts.length === 0 ? (
+                    <div className="text-gray-400">No transcripts yet.</div>
+                  ) : (
+                    recentTranscripts.map((entry, index) => (
+                      <div key={`${entry.time}-${index}`} className="mb-3 last:mb-0">
+                        <div className="text-xs text-gray-400 mb-1">{entry.time}</div>
+                        <div>{entry.text}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
 
               <div className="mt-4 flex gap-3">
@@ -371,4 +496,3 @@ export default function SessionPage() {
     </div>
   )
 }
-
