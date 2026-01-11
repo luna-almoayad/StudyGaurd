@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbConnect } from "@/lib/mongodb";
+import mongoose from "mongoose";
 import Session from "@/models/Session";
 import Profile from "@/models/Profile";
 
@@ -48,20 +49,39 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const sanitizeProfileId = (value: unknown) => {
+    const str = typeof value === "string" ? value : "";
+    return mongoose.Types.ObjectId.isValid(str) ? str : undefined;
+  };
+
+  const cleanParticipants = participants.map((p: { name?: string; profileId?: string }) => ({
+    name: String(p?.name || "").trim(),
+    profileId: sanitizeProfileId(p?.profileId),
+  }));
+
+  const cleanResults = results.map(
+    (r: { name?: string; profileId?: string; points?: number; distractions?: number }) => ({
+      name: String(r?.name || "").trim(),
+      profileId: sanitizeProfileId(r?.profileId),
+      points: Number(r?.points) || 0,
+      distractions: Number(r?.distractions) || 0,
+    })
+  );
+
   const session = await Session.create({
     sessionName: String(sessionName).trim(),
     topic: String(topic).trim(),
-    hostProfileId: hostProfileId || undefined,
-    participants,
-    results,
+    hostProfileId: sanitizeProfileId(hostProfileId),
+    participants: cleanParticipants,
+    results: cleanResults,
     duration,
     startedAt,
     endedAt,
   });
 
-  const updates = results
-    .filter((r: { profileId?: string; points?: number }) => r.profileId)
-    .map((r: { profileId: string; points: number }) => ({
+  const updates = cleanResults
+    .filter((r) => r.profileId)
+    .map((r) => ({
       updateOne: {
         filter: { _id: r.profileId },
         update: {

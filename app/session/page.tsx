@@ -44,14 +44,20 @@ export default function SessionPage() {
   >([])
   const [pendingAttribution, setPendingAttribution] = useState<string[]>([])
   const activeAudioRef = useRef<HTMLAudioElement | null>(null)
+  const isPausedRef = useRef(isPaused)
+  const isOnBreakRef = useRef(isOnBreak)
+  const sessionDataRef = useRef<SessionData | null>(null)
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const initialChunkTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const CHUNK_MS = 30000
-  const RESUME_CHUNK_MS = 10000
+  const watchdogRef = useRef<NodeJS.Timeout | null>(null)
+  const lastChunkAtRef = useRef<number>(Date.now())
+  const isRestartingRef = useRef(false)
+  const CHUNK_MS = 20000
+  const RESUME_CHUNK_MS = 20000
 
   useEffect(() => {
     // Load session data
@@ -63,6 +69,7 @@ export default function SessionPage() {
 
     const data: SessionData = JSON.parse(stored)
     setSessionData(data)
+    sessionDataRef.current = data
     
     // Initialize players with 100 points each
     const initialPlayers: Player[] = data.players.map(name => ({
@@ -82,15 +89,34 @@ export default function SessionPage() {
       if (initialChunkTimeoutRef.current) {
         clearTimeout(initialChunkTimeoutRef.current)
       }
+      if (watchdogRef.current) {
+        clearInterval(watchdogRef.current)
+      }
       stopRecording()
     }
   }, [router])
+
+  useEffect(() => {
+    isPausedRef.current = isPaused
+  }, [isPaused])
+
+  useEffect(() => {
+    isOnBreakRef.current = isOnBreak
+  }, [isOnBreak])
+
+  useEffect(() => {
+    sessionDataRef.current = sessionData
+  }, [sessionData])
 
   useEffect(() => {
     if (!isRecording || isPaused || isOnBreak) {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
         timerIntervalRef.current = null
+      }
+      if (watchdogRef.current) {
+        clearInterval(watchdogRef.current)
+        watchdogRef.current = null
       }
       return
     }
@@ -99,10 +125,27 @@ export default function SessionPage() {
       setElapsedTime(prev => prev + 1)
     }, 1000)
 
+    watchdogRef.current = setInterval(() => {
+      const gapMs = Date.now() - lastChunkAtRef.current
+      if (gapMs > CHUNK_MS + 5000 && !isRestartingRef.current) {
+        isRestartingRef.current = true
+        stopRecording()
+        setTimeout(() => {
+          startRecording({ useShortChunk: true }).finally(() => {
+            isRestartingRef.current = false
+          })
+        }, 200)
+      }
+    }, 5000)
+
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
         timerIntervalRef.current = null
+      }
+      if (watchdogRef.current) {
+        clearInterval(watchdogRef.current)
+        watchdogRef.current = null
       }
     }
   }, [isRecording, isPaused, isOnBreak])
@@ -145,6 +188,7 @@ export default function SessionPage() {
       }
 
       mediaRecorder.onstop = async () => {
+        lastChunkAtRef.current = Date.now()
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
         await analyzeAudio(audioBlob)
         audioChunksRef.current = []
@@ -199,6 +243,10 @@ export default function SessionPage() {
     if (initialChunkTimeoutRef.current) {
       clearTimeout(initialChunkTimeoutRef.current)
     }
+    if (watchdogRef.current) {
+      clearInterval(watchdogRef.current)
+      watchdogRef.current = null
+    }
     setIsRecording(false)
     setIsDistracted(true)
     setTopicStatus('UNKNOWN')
@@ -210,7 +258,7 @@ export default function SessionPage() {
   }
 
   const analyzeAudio = async (audioBlob: Blob) => {
-    if (isPaused || isOnBreak || !sessionData) return
+    if (isPausedRef.current || isOnBreakRef.current || !sessionDataRef.current) return
 
     try {
       // Convert blob to base64 without blowing the call stack
@@ -224,7 +272,7 @@ export default function SessionPage() {
         },
         body: JSON.stringify({
           audio: base64Audio,
-          topic: sessionData.topic,
+          topic: sessionDataRef.current?.topic,
         }),
       })
 
@@ -297,6 +345,11 @@ export default function SessionPage() {
   const resumeAfterDistraction = () => {
     setShowDistractionModal(false)
     setShowRedemptionModal(false)
+    setIsPaused(false)
+    setIsDistracted(false)
+    if (!isOnBreak) {
+      startRecording({ useShortChunk: true })
+    }
   }
 
   const handleAttribution = (playerNames: string[]) => {
@@ -366,8 +419,8 @@ export default function SessionPage() {
       finalData.sessionData.participants ||
       finalData.sessionData.players.map((name) => ({ name }))
 
-    const results = finalData.players.map((player) => {
-      const matched = participants.find((p) => p.name === player.name)
+    const results = finalData.players.map((player, index) => {
+      const matched = participants[index]
       return {
         name: player.name,
         profileId: matched?.profileId || null,
@@ -627,5 +680,3 @@ export default function SessionPage() {
     </div>
   )
 }
-
-

@@ -141,16 +141,21 @@ export default function Home() {
             <div className="flex items-center justify-between gap-3 mb-3">
               <h2 className="text-sm font-semibold text-gray-700">Host Profile</h2>
               <div className="flex items-center gap-3">
-                <Link href="/account" className="text-xs text-lavender-500 hover:text-lavender-600">
-                  View account
+                <Link
+                  href="/account"
+                  className="w-8 h-8 rounded-full bg-beige-100 text-gray-600 flex items-center justify-center shadow-soft hover:shadow-soft-lg transition-all border border-beige-200"
+                  aria-label="View account"
+                  title="View account"
+                >
+                  👤
                 </Link>
                 <Link
                   href="/profiles/new"
-                  className="w-8 h-8 rounded-full bg-lavender-100 text-lavender-500 flex items-center justify-center shadow-soft hover:shadow-soft-lg transition-all"
+                  className="w-8 h-8 rounded-full bg-lavender-100 text-lavender-600 flex items-center justify-center shadow-soft hover:shadow-soft-lg transition-all"
                   aria-label="Create profile"
                   title="Create profile"
                 >
-                  ✨
+                  ＋
                 </Link>
               </div>
             </div>
