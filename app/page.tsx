@@ -1,24 +1,57 @@
 'use client'
 
-import { useState } from 'react'
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+
+interface Profile {
+  id: string
+  name: string
+  username: string
+  avatar?: string
+  totalScore: number
+  totalSessions: number
+}
 
 export default function Home() {
   const router = useRouter()
   const [sessionName, setSessionName] = useState('')
   const [topic, setTopic] = useState('')
   const [players, setPlayers] = useState<string[]>([''])
+  const [playerProfiles, setPlayerProfiles] = useState<string[]>([''])
   const [error, setError] = useState('')
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [hostProfileId, setHostProfileId] = useState('')
+
+  useEffect(() => {
+    const loadProfiles = async () => {
+      try {
+        const res = await fetch('/api/profiles')
+        if (!res.ok) return
+        const data = await res.json()
+        setProfiles(data.profiles || [])
+        const saved = localStorage.getItem('currentProfileId') || ''
+        if (saved) {
+          setHostProfileId(saved)
+        }
+      } catch (err) {
+        console.error('Failed to load profiles', err)
+      }
+    }
+    loadProfiles()
+  }, [])
 
   const addPlayer = () => {
     if (players.length < 6) {
       setPlayers([...players, ''])
+      setPlayerProfiles((prev) => [...prev, ''])
     }
   }
 
   const removePlayer = (index: number) => {
     if (players.length > 1) {
       setPlayers(players.filter((_, i) => i !== index))
+      setPlayerProfiles(playerProfiles.filter((_, i) => i !== index))
     }
   }
 
@@ -26,6 +59,12 @@ export default function Home() {
     const newPlayers = [...players]
     newPlayers[index] = value
     setPlayers(newPlayers)
+  }
+
+  const updatePlayerProfile = (index: number, value: string) => {
+    const next = [...playerProfiles]
+    next[index] = value
+    setPlayerProfiles(next)
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -53,11 +92,20 @@ export default function Home() {
       return
     }
 
+    if (hostProfileId) {
+      localStorage.setItem('currentProfileId', hostProfileId)
+    }
+
     // Store session data and navigate
     const sessionData = {
       sessionName: sessionName.trim(),
       topic: topic.trim(),
       players: validPlayers,
+      hostProfileId: hostProfileId || null,
+      participants: validPlayers.map((name, index) => ({
+        name,
+        profileId: playerProfiles[index] || null,
+      })),
       startTime: Date.now(),
     }
     
@@ -76,6 +124,38 @@ export default function Home() {
         </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="card p-4 bg-beige-50 border border-beige-100">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="text-sm font-semibold text-gray-700">Host Profile</h2>
+              <div className="flex items-center gap-3">
+                <Link href="/account" className="text-xs text-lavender-500 hover:text-lavender-600">
+                  View account
+                </Link>
+                <Link
+                  href="/profiles/new"
+                  className="w-8 h-8 rounded-full bg-lavender-100 text-lavender-500 flex items-center justify-center shadow-soft hover:shadow-soft-lg transition-all"
+                  aria-label="Create profile"
+                  title="Create profile"
+                >
+                  ✨
+                </Link>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <select
+                value={hostProfileId}
+                onChange={(e) => setHostProfileId(e.target.value)}
+                className="input-field"
+              >
+                <option value="">Select a host profile (optional)</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.avatar ? `${profile.avatar} ` : ''}{profile.name} (@{profile.username})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
           <div>
             <label htmlFor="sessionName" className="block text-sm font-medium text-gray-600 mb-2.5">
               Session Name
@@ -112,19 +192,31 @@ export default function Home() {
             </label>
             <div className="space-y-2.5">
               {players.map((player, index) => (
-                <div key={index} className="flex gap-2.5">
+                <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
                   <input
                     type="text"
                     value={player}
                     onChange={(e) => updatePlayer(index, e.target.value)}
-                    className="input-field flex-1"
+                    className="input-field md:col-span-2"
                     placeholder={`Player ${index + 1} name`}
                   />
+                  <select
+                    value={playerProfiles[index] || ''}
+                    onChange={(e) => updatePlayerProfile(index, e.target.value)}
+                    className="input-field"
+                  >
+                    <option value="">Guest</option>
+                    {profiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.avatar ? `${profile.avatar} ` : ''}{profile.name}
+                      </option>
+                    ))}
+                  </select>
                   {players.length > 1 && (
                     <button
                       type="button"
                       onClick={() => removePlayer(index)}
-                      className="px-4 py-3 bg-beige-100 text-gray-600 rounded-xl hover:bg-beige-200 transition-all duration-200 text-sm font-medium border border-beige-200"
+                      className="px-4 py-3 bg-beige-100 text-gray-600 rounded-xl hover:bg-beige-200 transition-all duration-200 text-sm font-medium border border-beige-200 md:col-span-3"
                     >
                       Remove
                     </button>
@@ -160,4 +252,3 @@ export default function Home() {
     </div>
   )
 }
-

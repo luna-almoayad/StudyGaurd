@@ -16,6 +16,8 @@ interface SessionData {
   sessionName: string
   topic: string
   players: string[]
+  participants?: { name: string; profileId?: string | null }[]
+  hostProfileId?: string | null
   startTime: number
 }
 
@@ -315,7 +317,47 @@ export default function SessionPage() {
       duration: elapsedTime,
     }
     localStorage.setItem('sessionResults', JSON.stringify(finalData))
+    persistSession(finalData).catch((error) =>
+      console.error('Failed to save session', error)
+    )
     router.push('/leaderboard')
+  }
+
+  const persistSession = async (finalData: {
+    sessionData: SessionData | null
+    players: Player[]
+    duration: number
+  }) => {
+    if (!finalData.sessionData) return
+
+    const participants =
+      finalData.sessionData.participants ||
+      finalData.sessionData.players.map((name) => ({ name }))
+
+    const results = finalData.players.map((player) => {
+      const matched = participants.find((p) => p.name === player.name)
+      return {
+        name: player.name,
+        profileId: matched?.profileId || null,
+        points: player.points,
+        distractions: player.distractions,
+      }
+    })
+
+    await fetch('/api/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionName: finalData.sessionData.sessionName,
+        topic: finalData.sessionData.topic,
+        hostProfileId: finalData.sessionData.hostProfileId || null,
+        participants,
+        results,
+        duration: finalData.duration,
+        startedAt: finalData.sessionData.startTime,
+        endedAt: Date.now(),
+      }),
+    })
   }
 
   const speak = async (text: string) => {
