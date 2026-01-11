@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import DistractionModal from '@/components/DistractionModal'
+import RedemptionChallengeModal from '@/components/RedemptionChallengeModal'
 import FocusMeter from '@/components/FocusMeter'
 import BreakModal from '@/components/BreakModal'
 
@@ -35,11 +36,13 @@ export default function SessionPage() {
   const [focusLevel, setFocusLevel] = useState(100)
   const [showDistractionModal, setShowDistractionModal] = useState(false)
   const [showBreakModal, setShowBreakModal] = useState(false)
+  const [showRedemptionModal, setShowRedemptionModal] = useState(false)
   const [lastTranscript, setLastTranscript] = useState('')
   const [topicStatus, setTopicStatus] = useState<'ON_TOPIC' | 'OFF_TOPIC' | 'NO_SPEECH' | 'UNKNOWN'>('UNKNOWN')
   const [recentTranscripts, setRecentTranscripts] = useState<
     { text: string; time: string }[]
   >([])
+  const [pendingAttribution, setPendingAttribution] = useState<string[]>([])
   const activeAudioRef = useRef<HTMLAudioElement | null>(null)
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -279,22 +282,44 @@ export default function SessionPage() {
     }
   }
 
-  const handleAttribution = (playerNames: string[]) => {
-    if (playerNames.length > 0) {
-      const selected = new Set(playerNames)
-      setPlayers(prev =>
-        prev.map(p =>
-          selected.has(p.name)
-            ? { ...p, points: Math.max(0, p.points - 10), distractions: p.distractions + 1 }
-            : p
-        )
+  const applyPenalty = (playerNames: string[]) => {
+    if (playerNames.length === 0) return
+    const selected = new Set(playerNames)
+    setPlayers(prev =>
+      prev.map(p =>
+        selected.has(p.name)
+          ? { ...p, points: Math.max(0, p.points - 10), distractions: p.distractions + 1 }
+          : p
       )
-    }
-    
+    )
+  }
+
+  const resumeAfterDistraction = () => {
     setShowDistractionModal(false)
-    setIsPaused(false)
-    setIsDistracted(false)
-    startRecording({ useShortChunk: true })
+    setShowRedemptionModal(false)
+  }
+
+  const handleAttribution = (playerNames: string[]) => {
+    if (playerNames.length === 0) return
+
+    const isShared = playerNames.length === players.length && players.length > 0
+    if (isShared) {
+      setPendingAttribution(playerNames)
+      setShowDistractionModal(false)
+      setShowRedemptionModal(true)
+      return
+    }
+
+    applyPenalty(playerNames)
+    resumeAfterDistraction()
+  }
+
+  const handleRedemptionResult = (passed: boolean) => {
+    if (!passed) {
+      applyPenalty(pendingAttribution)
+    }
+    setPendingAttribution([])
+    resumeAfterDistraction()
   }
 
   const handleStartBreak = () => {
@@ -337,7 +362,7 @@ export default function SessionPage() {
   }) => {
     if (!finalData.sessionData) return
 
-    const participants =
+    const participants: { name: string; profileId?: string | null }[] =
       finalData.sessionData.participants ||
       finalData.sessionData.players.map((name) => ({ name }))
 
@@ -451,12 +476,16 @@ export default function SessionPage() {
               <FocusMeter level={focusLevel} />
               
               <div className="mt-8 flex gap-3">
-                {!isRecording && !isPaused && (
+                {!isRecording && !isOnBreak && (
                   <button
-                    onClick={startRecording}
+                    onClick={() => {
+                      setIsPaused(false)
+                      setIsDistracted(false)
+                      startRecording()
+                    }}
                     className="flex-1 btn-primary"
                   >
-                    Start Listening
+                    {isPaused ? 'Resume Listening' : 'Start Listening'}
                   </button>
                 )}
                 
@@ -567,6 +596,10 @@ export default function SessionPage() {
           transcript={lastTranscript}
           onAttribution={handleAttribution}
         />
+      )}
+
+      {showRedemptionModal && (
+        <RedemptionChallengeModal onResolve={handleRedemptionResult} />
       )}
 
       {showBreakModal && (
