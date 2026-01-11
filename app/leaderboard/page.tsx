@@ -23,6 +23,8 @@ interface SessionResults {
 export default function LeaderboardPage() {
   const router = useRouter()
   const [results, setResults] = useState<SessionResults | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('sessionResults')
@@ -32,6 +34,41 @@ export default function LeaderboardPage() {
     }
     setResults(JSON.parse(stored))
   }, [router])
+
+  useEffect(() => {
+  if (!results || saved) return
+
+  const saveScores = async () => {
+    try {
+      setSaveError(null)
+
+      const payload = {
+        players: results.players.map(p => ({
+          name: p.name,
+          score: p.points, // points -> score in DB
+        })),
+      }
+
+      const res = await fetch("/api/players/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || `Save failed (${res.status})`)
+      }
+
+      setSaved(true)
+    } catch (err: any) {
+      setSaveError(err.message || "Failed to save scores")
+    }
+  }
+
+  saveScores()
+}, [results, saved])
+
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
