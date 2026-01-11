@@ -5,16 +5,38 @@ import { useState, useEffect } from 'react'
 interface DistractionModalProps {
   players: string[]
   transcript: string
-  onAttribution: (playerName: string | null) => void
+  onAttribution: (playerNames: string[]) => void
 }
 
 export default function DistractionModal({ players, transcript, onAttribution }: DistractionModalProps) {
-  const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null)
+  const [selectedPlayers, setSelectedPlayers] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     // Play warning sound or use ElevenLabs TTS here
     // For now, we'll just show the modal
   }, [])
+
+  const togglePlayer = (player: string) => {
+    setSelectedPlayers(prev => {
+      const next = new Set(prev)
+      if (next.has(player)) {
+        next.delete(player)
+      } else {
+        next.add(player)
+      }
+      return next
+    })
+  }
+
+  const selectAll = () => {
+    setSelectedPlayers(new Set(players))
+  }
+
+  const clearAll = () => {
+    setSelectedPlayers(new Set())
+  }
+
+  const isAllSelected = selectedPlayers.size === players.length && players.length > 0
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -41,9 +63,9 @@ export default function DistractionModal({ players, transcript, onAttribution }:
             {players.map((player) => (
               <button
                 key={player}
-                onClick={() => setSelectedPlayer(player)}
+                onClick={() => togglePlayer(player)}
                 className={`p-3.5 rounded-xl border-2 transition-all duration-200 font-medium text-sm ${
-                  selectedPlayer === player
+                  selectedPlayers.has(player)
                     ? 'border-focus-red bg-focus-red text-white shadow-soft'
                     : 'border-beige-200 bg-white text-gray-600 hover:border-lavender-200 hover:bg-lavender-50'
                 }`}
@@ -52,21 +74,17 @@ export default function DistractionModal({ players, transcript, onAttribution }:
               </button>
             ))}
             <button
-              onClick={() => setSelectedPlayer('shared')}
-              className={`p-3.5 rounded-xl border-2 transition-all duration-200 col-span-2 font-medium text-sm ${
-                selectedPlayer === 'shared'
-                  ? 'border-lavender-300 bg-lavender-200 text-gray-700 shadow-soft'
-                  : 'border-beige-200 bg-white text-gray-600 hover:border-lavender-200 hover:bg-lavender-50'
-              }`}
+              onClick={isAllSelected ? clearAll : selectAll}
+              className="p-3.5 rounded-xl border-2 transition-all duration-200 col-span-2 font-medium text-sm border-lavender-200 bg-lavender-50 text-lavender-700 hover:bg-lavender-100"
             >
-              Shared Distraction
+              {isAllSelected ? 'Clear Selection' : 'All Members'}
             </button>
           </div>
         </div>
 
         <button
-          onClick={() => onAttribution(selectedPlayer === 'shared' ? null : selectedPlayer)}
-          disabled={!selectedPlayer}
+          onClick={() => onAttribution(Array.from(selectedPlayers))}
+          disabled={selectedPlayers.size === 0}
           className="btn-primary w-full disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
         >
           Confirm & Resume
@@ -75,4 +93,3 @@ export default function DistractionModal({ players, transcript, onAttribution }:
     </div>
   )
 }
-

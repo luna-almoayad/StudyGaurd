@@ -43,6 +43,9 @@ export default function SessionPage() {
   const audioChunksRef = useRef<Blob[]>([])
   const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const initialChunkTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const CHUNK_MS = 30000
+  const RESUME_CHUNK_MS = 10000
 
   useEffect(() => {
     // Load session data
@@ -69,6 +72,9 @@ export default function SessionPage() {
       }
       if (analysisIntervalRef.current) {
         clearInterval(analysisIntervalRef.current)
+      }
+      if (initialChunkTimeoutRef.current) {
+        clearTimeout(initialChunkTimeoutRef.current)
       }
       stopRecording()
     }
@@ -114,7 +120,7 @@ export default function SessionPage() {
     return () => clearInterval(breakCheckInterval)
   }, [isOnBreak, breakStartTime])
 
-  const startRecording = async () => {
+  const startRecording = async (options?: { useShortChunk?: boolean }) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const mediaRecorder = new MediaRecorder(stream, {
@@ -141,12 +147,34 @@ export default function SessionPage() {
       mediaRecorder.start()
       setIsRecording(true)
 
-      analysisIntervalRef.current = setInterval(() => {
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-          mediaRecorder.stop()
-          mediaRecorder.start()
-        }
-      }, 30000) // 30 seconds
+      const useShortChunk = options?.useShortChunk === true
+      if (analysisIntervalRef.current) {
+        clearInterval(analysisIntervalRef.current)
+      }
+      if (initialChunkTimeoutRef.current) {
+        clearTimeout(initialChunkTimeoutRef.current)
+      }
+
+      const startChunkInterval = () => {
+        analysisIntervalRef.current = setInterval(() => {
+          if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop()
+            mediaRecorder.start()
+          }
+        }, CHUNK_MS)
+      }
+
+      if (useShortChunk) {
+        initialChunkTimeoutRef.current = setTimeout(() => {
+          if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop()
+            mediaRecorder.start()
+          }
+          startChunkInterval()
+        }, RESUME_CHUNK_MS)
+      } else {
+        startChunkInterval()
+      }
     } catch (error) {
       console.error('Error starting recording:', error)
       alert('Could not access microphone. Please grant permissions.')
@@ -160,6 +188,9 @@ export default function SessionPage() {
     }
     if (analysisIntervalRef.current) {
       clearInterval(analysisIntervalRef.current)
+    }
+    if (initialChunkTimeoutRef.current) {
+      clearTimeout(initialChunkTimeoutRef.current)
     }
     setIsRecording(false)
     setTopicStatus('UNKNOWN')
@@ -242,11 +273,12 @@ export default function SessionPage() {
     }
   }
 
-  const handleAttribution = (playerName: string | null) => {
-    if (playerName) {
+  const handleAttribution = (playerNames: string[]) => {
+    if (playerNames.length > 0) {
+      const selected = new Set(playerNames)
       setPlayers(prev =>
         prev.map(p =>
-          p.name === playerName
+          selected.has(p.name)
             ? { ...p, points: Math.max(0, p.points - 10), distractions: p.distractions + 1 }
             : p
         )
@@ -255,9 +287,7 @@ export default function SessionPage() {
     
     setShowDistractionModal(false)
     setIsPaused(false)
-    setTimeout(() => {
-      startRecording()
-    }, 1000)
+    startRecording({ useShortChunk: true })
   }
 
   const handleStartBreak = () => {
