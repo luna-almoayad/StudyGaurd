@@ -4,7 +4,8 @@ import axios from 'axios'
 import FormData from 'form-data'
 
 // Initialize Gemini
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
+const genAI = new GoogleGenerativeAI((process.env.GEMINI_API_KEY || '').trim())
+const geminiModel = (process.env.GEMINI_MODEL || 'gemini-1.5-flash').trim()
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,11 +55,11 @@ async function transcribeAudio(base64Audio: string): Promise<string> {
     
     // Use form-data for multipart/form-data request
     const formData = new FormData()
-    formData.append('audio', audioBuffer, {
+    formData.append('file', audioBuffer, {
       filename: 'audio.webm',
       contentType: 'audio/webm',
     })
-    formData.append('model_id', 'eleven_multilingual_v2')
+    formData.append('model_id', 'scribe_v1')
 
     // Use axios for better FormData handling in Node.js
     const response = await axios.post(
@@ -94,7 +95,7 @@ async function analyzeTranscript(
   reasoning: string
 }> {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
+    const model = genAI.getGenerativeModel({ model: geminiModel })
 
     const prompt = `You are analyzing study conversations.
 
@@ -132,4 +133,3 @@ Only respond with one word: either "RELEVANT" or "DISTRACTION".`
     }
   }
 }
-
