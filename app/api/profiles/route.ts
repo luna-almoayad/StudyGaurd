@@ -10,7 +10,15 @@ export async function GET() {
     .select("name username avatar totalScore totalSessions")
     .sort({ name: 1 })
     .lean();
-  return NextResponse.json({ profiles });
+  const normalized = profiles.map((profile) => ({
+    id: profile._id.toString(),
+    name: profile.name,
+    username: profile.username,
+    avatar: profile.avatar,
+    totalScore: profile.totalScore,
+    totalSessions: profile.totalSessions,
+  }));
+  return NextResponse.json({ profiles: normalized });
 }
 
 export async function POST(request: NextRequest) {
