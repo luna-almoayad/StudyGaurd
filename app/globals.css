@@ -63,8 +63,8 @@ body {
 .walker-track {
   position: absolute;
   top: -90px;
-  left: -80px;
-  animation: walkAcross 30s linear infinite;
+  left: -20px;
+  animation: walkAcross 40s linear infinite;
 }
 
 .walker-sprite {
@@ -76,8 +76,8 @@ body {
 
 @keyframes walkAcross { 
   0% { transform: translateX(0) scaleX(1); } 
-  49% { transform: translateX(calc(100vw - 330px)) scaleX(1); } /* go past right edge */
-   50% { transform: translateX(calc(100vw - 330px)) scaleX(-1); } /* flip */
+  49% { transform: translateX(calc(100vw - 450px)) scaleX(1); } /* go past right edge */
+   50% { transform: translateX(calc(100vw - 450px)) scaleX(-1); } /* flip */
     99% { transform: translateX(0) scaleX(-1); } /* return left */ 
     100% { transform: translateX(0) scaleX(1); }
    }
