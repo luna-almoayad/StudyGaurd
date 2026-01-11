@@ -50,21 +50,16 @@ export default function SessionPage() {
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
-  const analysisIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const initialChunkTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const watchdogRef = useRef<NodeJS.Timeout | null>(null)
-  const chunkTimerRef = useRef<NodeJS.Timeout | null>(null)
   const lastChunkAtRef = useRef<number>(Date.now())
   const isRestartingRef = useRef(false)
   const isRecordingRef = useRef(false)
-  const nextChunkMsRef = useRef(0)
   const isHandlingDistractionRef = useRef(false)
   const lastDistractionAtRef = useRef(0)
   const lastSpeakAtRef = useRef(0)
   const analysisInFlightRef = useRef(false)
   const CHUNK_MS = 20000
-  const RESUME_CHUNK_MS = 20000
 
   useEffect(() => {
     // Load session data
@@ -89,16 +84,6 @@ export default function SessionPage() {
     return () => {
       if (timerIntervalRef.current) {
         clearInterval(timerIntervalRef.current)
-      }
-      if (analysisIntervalRef.current) {
-        clearInterval(analysisIntervalRef.current)
-      }
-      if (initialChunkTimeoutRef.current) {
-        clearTimeout(initialChunkTimeoutRef.current)
-      }
-      if (chunkTimerRef.current) {
-        clearTimeout(chunkTimerRef.current)
-        chunkTimerRef.current = null
       }
       if (watchdogRef.current) {
         clearInterval(watchdogRef.current)
@@ -125,10 +110,6 @@ export default function SessionPage() {
         clearInterval(timerIntervalRef.current)
         timerIntervalRef.current = null
       }
-      if (chunkTimerRef.current) {
-        clearTimeout(chunkTimerRef.current)
-        chunkTimerRef.current = null
-      }
       if (watchdogRef.current) {
         clearInterval(watchdogRef.current)
         watchdogRef.current = null
@@ -146,7 +127,7 @@ export default function SessionPage() {
         isRestartingRef.current = true
         stopRecording()
         setTimeout(() => {
-          startRecording({ useShortChunk: true }).finally(() => {
+          startRecording().finally(() => {
             isRestartingRef.current = false
           })
         }, 200)
@@ -184,7 +165,7 @@ export default function SessionPage() {
     return () => clearInterval(breakCheckInterval)
   }, [isOnBreak, breakStartTime])
 
-  const startRecording = async (options?: { useShortChunk?: boolean }) => {
+  const startRecording = async () => {
     try {
       if (isRecordingRef.current) return
       isRecordingRef.current = true
@@ -198,29 +179,15 @@ export default function SessionPage() {
       audioChunksRef.current = []
       setTopicStatus('UNKNOWN')
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data)
-        }
-      }
-
-      mediaRecorder.onstop = async () => {
+      mediaRecorder.ondataavailable = async (event) => {
+        if (!event.data || event.data.size === 0) return
         lastChunkAtRef.current = Date.now()
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const audioBlob = new Blob([event.data], { type: event.data.type || 'audio/webm' })
         await analyzeAudio(audioBlob)
-        audioChunksRef.current = []
-        if (!isRecordingRef.current || isPausedRef.current || isOnBreakRef.current) return
-        mediaRecorder.start()
-        nextChunkMsRef.current = CHUNK_MS
-        scheduleNextStop(nextChunkMsRef.current)
       }
 
-      mediaRecorder.start()
+      mediaRecorder.start(CHUNK_MS)
       setIsRecording(true)
-
-      const useShortChunk = options?.useShortChunk === true
-      nextChunkMsRef.current = useShortChunk ? RESUME_CHUNK_MS : CHUNK_MS
-      scheduleNextStop(nextChunkMsRef.current)
     } catch (error) {
       console.error('Error starting recording:', error)
       alert('Could not access microphone. Please grant permissions.')
@@ -233,16 +200,6 @@ export default function SessionPage() {
       mediaRecorderRef.current.stop()
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop())
     }
-    if (analysisIntervalRef.current) {
-      clearInterval(analysisIntervalRef.current)
-    }
-    if (initialChunkTimeoutRef.current) {
-      clearTimeout(initialChunkTimeoutRef.current)
-    }
-    if (chunkTimerRef.current) {
-      clearTimeout(chunkTimerRef.current)
-      chunkTimerRef.current = null
-    }
     if (watchdogRef.current) {
       clearInterval(watchdogRef.current)
       watchdogRef.current = null
@@ -250,18 +207,6 @@ export default function SessionPage() {
     setIsRecording(false)
     setIsDistracted('idle')
     setTopicStatus('UNKNOWN')
-  }
-
-  const scheduleNextStop = (delayMs: number) => {
-    if (chunkTimerRef.current) {
-      clearTimeout(chunkTimerRef.current)
-    }
-    chunkTimerRef.current = setTimeout(() => {
-      const recorder = mediaRecorderRef.current
-      if (recorder && recorder.state === 'recording') {
-        recorder.stop()
-      }
-    }, delayMs)
   }
 
   const handleStopListening = () => {
@@ -371,7 +316,7 @@ export default function SessionPage() {
     setIsDistracted(false)
     isHandlingDistractionRef.current = false
     if (!isOnBreak) {
-      startRecording({ useShortChunk: true })
+      startRecording()
     }
   }
 
